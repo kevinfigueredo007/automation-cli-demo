@@ -1,0 +1,13 @@
+---
+- name: Exibir informações do sistema
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Executar comando uname
+      ansible.builtin.command:
+        cmd: uname -a
+      register: uname_result
+
+    - name: Exibir resultado do comando uname
+      ansible.builtin.debug:
+        var: uname_result.stdout
