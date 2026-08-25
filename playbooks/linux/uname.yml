@@ -1,5 +1,5 @@
 ---
-- name: Exibir informações do sistema
+- name: Exibir informações do sistema.
   hosts: localhost
   gather_facts: false
   tasks:
