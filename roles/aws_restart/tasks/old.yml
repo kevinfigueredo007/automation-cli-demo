@@ -1,3 +1,0 @@
----
-# role antiga — será removida quando migrarmos para aws_restart
-legacy_mode: false

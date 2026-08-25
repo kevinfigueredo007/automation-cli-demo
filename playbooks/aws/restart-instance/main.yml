@@ -4,14 +4,23 @@
   gather_facts: false
   vars:
     instance_id: "{{ instance_id | default('') }}"
+    aws_region: "{{ aws_region | default('us-east-1') }}"
   tasks:
     - name: Reiniciar a instância
       amazon.aws.ec2_instance:
         instance_ids:
           - "{{ instance_id }}"
         state: restarted
+        region: "{{ aws_region }}"
       register: restart_result
 
     - name: Exibir resultado
       ansible.builtin.debug:
         var: restart_result
+
+
+    - name: Registrar hora do restart
+      ansible.builtin.set_fact:
+        restart_time: "{{ ansible_date_time.iso8601 }}"
+
+## teste 01
