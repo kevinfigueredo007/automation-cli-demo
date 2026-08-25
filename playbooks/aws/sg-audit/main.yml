@@ -1,0 +1,22 @@
+---
+- name: Auditar security groups abertos para 0.0.0.0/0
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Listar security groups
+      amazon.aws.ec2_security_group_info:
+      register: sg_info
+
+    - name: Filtrar regras abertas
+      ansible.builtin.set_fact:
+        open_rules: >-
+          {{ sg_info.security_groups
+             | map(attribute='rules')
+             | flatten
+             | selectattr('cidr_ip', 'defined')
+             | selectattr('cidr_ip', 'equalto', '0.0.0.0/0') }}
+      failed_when: false
+
+    - name: Exibir regras abertas
+      ansible.builtin.debug:
+        var: open_rules
