@@ -4,6 +4,7 @@
   gather_facts: false
   vars:
     volume_id: "{{ volume_id | default('') }}"
+    retention_days: 7
   tasks:
     - name: Criar snapshot
       amazon.aws.ec2_snapshot:

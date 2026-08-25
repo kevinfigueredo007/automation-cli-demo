@@ -1,0 +1,9 @@
+---
+- name: Coletar métricas pós-restart
+  ansible.builtin.setup:
+    filter: ansible_facts.hardware
+  register: hw_facts
+
+- name: Exibir memória
+  ansible.builtin.debug:
+    var: hw_facts.ansible_facts.hardware.memory

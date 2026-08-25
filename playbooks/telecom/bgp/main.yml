@@ -5,6 +5,7 @@
   vars:
     neighbor_ip: "{{ neighbor_ip | default('10.0.0.1') }}"
     local_asn: "{{ local_asn | default('65000') }}"
+    remote_asn: "{{ remote_asn | default('65001') }}"
   tasks:
     - name: Configurar sessão BGP
       ansible.builtin.debug:

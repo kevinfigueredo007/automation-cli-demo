@@ -2,3 +2,5 @@
 # defaults comuns para automações AWS
 aws_region: "us-east-1"
 aws_profile: "default"
+aws_max_retries: 5
+aws_retry_delay: 10
