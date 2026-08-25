@@ -9,3 +9,12 @@
 - name: Exibir status pós-restart
   ansible.builtin.debug:
     msg: "Instância {{ inventory_hostname }} reiniciada com sucesso"
+
+- name: Validar conectividade SSH
+  ansible.builtin.ping:
+  register: ping_result
+
+- name: Falhar se não responder
+  ansible.builtin.fail:
+    msg: "Instância {{ inventory_hostname }} não respondeu ao ping"
+  when: ping_result.failed | default(false)
