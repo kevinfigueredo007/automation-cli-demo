@@ -1,4 +1,4 @@
-version: "1.0.4"
+version: "1.0.5"
 
 paths:
-  - playbooks/linux/
+  - roles/aws_restart/defaults/main.yml
