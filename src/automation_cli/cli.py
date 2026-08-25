@@ -102,6 +102,11 @@ def release(
         "--push",
         help="Push the release branch (and tag, if --tag) to origin and switch back to --source.",
     ),
+    no_fetch: bool = typer.Option(
+        False,
+        "--no-fetch",
+        help="Skip fetching/pulling base and source branches before the release.",
+    ),
     base: str = typer.Option("main", "--base", help="Base branch (default: main)."),
     source: str = typer.Option("dev", "--source", help="Source branch (default: dev)."),
     remote: str = typer.Option("origin", "--remote", help="Remote to push to (default: origin)."),
@@ -120,7 +125,7 @@ def release(
         return
 
     try:
-        release_branch, changes, kept, redundant = create_release(
+        release_branch, changes, kept, redundant, sync_result = create_release(
             repo,
             m,
             base_branch=base,
@@ -128,10 +133,18 @@ def release(
             create_tag=tag,
             push=push,
             remote=remote,
+            no_fetch=no_fetch,
         )
     except (ReleaseError, GitError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
+
+    if sync_result and (sync_result.synced or sync_result.skipped):
+        typer.echo("Branch sync:")
+        for s in sync_result.synced:
+            typer.secho(f"  pulled  {s}", fg=typer.colors.CYAN)
+        for s in sync_result.skipped:
+            typer.echo(f"  skipped {s}")
 
     typer.secho(f"Created release branch: {release_branch}", fg=typer.colors.GREEN)
     typer.echo(f"  base:    {base}")

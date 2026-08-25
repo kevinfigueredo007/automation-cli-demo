@@ -24,7 +24,7 @@ def _read(repo_path: Path, relpath: str) -> str:
 
 def test_release_creates_branch_with_correct_state(repo: GitRepository, repo_path: Path):
     manifest = _m(["roles/aws_restart/", "playbooks/aws/restart-instance/", "collections/requirements.yml"])
-    branch, changes, kept, redundant = create_release(repo, manifest)
+    branch, changes, kept, redundant, _sync = create_release(repo, manifest)
 
     assert branch == "release/1.4.0"
     assert kept == ["roles/aws_restart", "playbooks/aws/restart-instance", "collections/requirements.yml"]
@@ -117,7 +117,7 @@ def test_release_normalizes_overlapping_paths(repo: GitRepository, repo_path: Pa
     # roles/aws_restart is a sub-path of roles (not in manifest). Use overlapping:
     # 'roles/aws_restart' and 'roles/aws_restart/tasks' — the latter is redundant.
     manifest = _m(["roles/aws_restart/", "roles/aws_restart/tasks/"], version="8.0.0")
-    _branch, _changes, kept, redundant = create_release(repo, manifest)
+    _branch, _changes, kept, redundant, _sync = create_release(repo, manifest)
     assert "roles/aws_restart/tasks" in redundant
     assert kept == ["roles/aws_restart"]
     assert _read(repo_path, "roles/aws_restart/tasks/main.yml") == "dev: aws_restart NEW\n"
@@ -206,3 +206,91 @@ def test_release_push_failed_does_not_switch_to_source(repo_with_remote, monkeyp
         create_release(repo, _m(["roles/aws_restart/"], version="13.0.0"), push=True)
     # Should still be on the release branch (not switched to dev).
     assert repo.current_branch() == "release/13.0.0"
+
+
+# --- sync (fetch + ff-only pull) ------------------------------------------
+
+def test_sync_pulls_behind_branch(repo_with_remote):
+    """When local main is behind origin/main, sync fast-forwards it."""
+    repo, bare = repo_with_remote
+    # Add a commit to origin/main via a second clone.
+    clone2 = bare.parent / "clone2"
+    subprocess.run(["git", "clone", "-q", str(bare), str(clone2)], check=True)
+    subprocess.run(["git", "checkout", "main"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=str(clone2), check=True)
+    (clone2 / "new.txt").write_text("from origin\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "commit", "-m", "new commit on origin main"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "push", "origin", "main"], cwd=str(clone2), check=True)
+
+    # Local main is now behind. Sync should fast-forward it.
+    from automation_cli.release import sync_branches
+    result = sync_branches(repo, ["main"], remote="origin")
+    assert len(result.synced) == 1
+    assert "main" in result.synced[0]
+    # The new file should now exist locally on main.
+    assert (repo.root / "new.txt").exists()
+
+
+def test_sync_skips_when_ahead(repo_with_remote):
+    """When local has commits the remote doesn't, sync skips (no merge)."""
+    repo, _bare = repo_with_remote
+    # Add a local-only commit on main.
+    subprocess.run(["git", "checkout", "main"], cwd=str(repo.root), check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(repo.root), check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=str(repo.root), check=True)
+    (repo.root / "local-only.txt").write_text("local\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(repo.root), check=True)
+    subprocess.run(["git", "commit", "-m", "local-only commit"], cwd=str(repo.root), check=True)
+
+    from automation_cli.release import sync_branches
+    result = sync_branches(repo, ["main"], remote="origin")
+    assert len(result.skipped) == 1
+    assert "ahead" in result.skipped[0]
+
+
+def test_sync_skips_when_up_to_date(repo_with_remote):
+    """When local matches remote, sync reports 'already up to date'."""
+    repo, _bare = repo_with_remote
+    from automation_cli.release import sync_branches
+    result = sync_branches(repo, ["main"], remote="origin")
+    assert len(result.skipped) == 1
+    assert "up to date" in result.skipped[0]
+
+
+def test_sync_restores_original_branch(repo_with_remote):
+    """Sync should leave you on whatever branch you started on."""
+    repo, _bare = repo_with_remote
+    subprocess.run(["git", "checkout", "main"], cwd=str(repo.root), check=True)
+    from automation_cli.release import sync_branches
+    sync_branches(repo, ["main", "dev"], remote="origin")
+    assert repo.current_branch() == "main"
+
+
+def test_no_fetch_skips_sync(repo: GitRepository):
+    """With no_fetch=True, sync is skipped entirely (sync_result is None)."""
+    _branch, _changes, _kept, _redundant, sync_result = create_release(
+        repo, _m(["roles/aws_restart/"], version="30.0.0"), no_fetch=True
+    )
+    assert sync_result is None
+
+
+def test_no_fetch_with_remote_skips_sync(repo_with_remote):
+    """Even with a remote, no_fetch=True skips sync."""
+    repo, _bare = repo_with_remote
+    _branch, _changes, _kept, _redundant, sync_result = create_release(
+        repo, _m(["roles/aws_restart/"], version="31.0.0"), no_fetch=True
+    )
+    assert sync_result is None
+
+
+def test_sync_failure_does_not_block_release(repo_with_remote):
+    """If fetch fails (e.g. bad remote URL), the release still proceeds."""
+    repo, _bare = repo_with_remote
+    subprocess.run(["git", "remote", "set-url", "origin", "/does/not/exist.git"], cwd=str(repo.root), check=True)
+    _branch, _changes, _kept, _redundant, sync_result = create_release(
+        repo, _m(["roles/aws_restart/"], version="32.0.0")
+    )
+    assert sync_result is not None
+    assert any("skipped" in s for s in sync_result.skipped)
