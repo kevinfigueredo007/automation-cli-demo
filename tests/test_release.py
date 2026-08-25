@@ -156,3 +156,53 @@ def test_release_single_file_path(repo: GitRepository, repo_path: Path):
     assert _read(repo_path, "collections/requirements.yml") == "dev: requirements NEW\n"
     # Unrelated modified path stays from main.
     assert _read(repo_path, "roles/aws_restart/tasks/main.yml") == "main: aws_restart old\n"
+
+
+# --- push ------------------------------------------------------------------
+
+def test_release_push_pushes_branch_and_returns_to_source(repo_with_remote, tmp_path):
+    repo, bare = repo_with_remote
+    create_release(repo, _m(["roles/aws_restart/"], version="10.0.0"), push=True)
+    # Current branch should be `dev` (the configured source).
+    assert repo.current_branch() == "dev"
+    # The release branch must exist on the remote.
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "refs/heads/release/10.0.0"],
+        cwd=str(bare), capture_output=True, text=True, check=True,
+    )
+    assert result.returncode == 0
+
+
+def test_release_push_with_tag_pushes_tag_too(repo_with_remote):
+    repo, bare = repo_with_remote
+    create_release(
+        repo, _m(["roles/aws_restart/"], version="11.0.0"), push=True, create_tag=True,
+    )
+    assert repo.current_branch() == "dev"
+    # Tag must exist on the remote.
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "refs/tags/11.0.0"],
+        cwd=str(bare), capture_output=True, text=True, check=True,
+    )
+    assert result.returncode == 0
+
+
+def test_release_push_without_origin_fails(repo: GitRepository):
+    # No `origin` configured on the plain `repo` fixture.
+    from automation_cli.release import ReleaseError
+    with pytest.raises(ReleaseError) as excinfo:
+        create_release(repo, _m(["roles/aws_restart/"], version="12.0.0"), push=True)
+    assert "remote" in str(excinfo.value).lower()
+
+
+def test_release_push_failed_does_not_switch_to_source(repo_with_remote, monkeypatch):
+    """If push fails we stay on the release branch for inspection."""
+    repo, _bare = repo_with_remote
+    # Sabotage the remote URL so push fails, but keep has_remote() truthy
+    # (it only checks get-url, not connectivity).
+    subprocess.run(["git", "remote", "set-url", "origin", "/does/not/exist.git"], cwd=str(repo.root), check=True)
+    from automation_cli.git import GitError
+    with pytest.raises(GitError):
+        create_release(repo, _m(["roles/aws_restart/"], version="13.0.0"), push=True)
+    # Should still be on the release branch (not switched to dev).
+    assert repo.current_branch() == "release/13.0.0"

@@ -152,18 +152,22 @@ def create_release(
     source_branch: str = "dev",
     create_tag: bool = False,
     commit_message: str | None = None,
+    push: bool = False,
+    remote: str = "origin",
 ) -> tuple[str, ChangeSet, list[str], list[str]]:
     """Apply the release: create ``release/<version>`` from base + selected paths.
 
     Returns ``(release_branch, changes, kept_paths, removed_redundant)``.
 
     Steps:
-    1. Pre-flight validation.
+    1. Pre-flight validation (incl. remote presence when ``push``).
     2. Normalize overlapping paths.
     3. Create the release branch from the base branch and check it out.
     4. For each selected path, restore its state from the source branch and
        remove any files that were deleted there.
     5. Stage and commit. Optionally create a tag.
+    6. When ``push``: push the release branch (and the tag when ``create_tag``)
+       to ``remote`` with ``-u``, then ``checkout`` the source branch.
     """
     report = validate_release(
         repo,
@@ -171,6 +175,8 @@ def create_release(
         base_branch=base_branch,
         source_branch=source_branch,
         create_tag=create_tag,
+        push=push,
+        remote=remote,
     )
     if not report.ok:
         raise ReleaseError(_format_report(report))
@@ -219,6 +225,15 @@ def create_release(
 
     if create_tag:
         repo.create_tag(version, release_branch, message=message)
+
+    if push:
+        # Push the branch first; if it fails, leave the user on the release
+        # branch so they can inspect and retry — do NOT switch to source.
+        repo.push_ref(release_branch, remote=remote, set_upstream=True)
+        if create_tag:
+            repo.push_tag(version, remote=remote)
+        # Only switch back to the source branch after a successful push.
+        repo.checkout(source_branch)
 
     return release_branch, changes, kept, removed_redundant
 
