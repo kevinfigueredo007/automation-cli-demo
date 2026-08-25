@@ -97,8 +97,14 @@ def release(
         False, "--dry-run", help="Compute and show what would happen; change nothing."
     ),
     tag: bool = typer.Option(False, "--tag", help="Also create a tag <version>."),
+    push: bool = typer.Option(
+        False,
+        "--push",
+        help="Push the release branch (and tag, if --tag) to origin and switch back to --source.",
+    ),
     base: str = typer.Option("main", "--base", help="Base branch (default: main)."),
     source: str = typer.Option("dev", "--source", help="Source branch (default: dev)."),
+    remote: str = typer.Option("origin", "--remote", help="Remote to push to (default: origin)."),
 ) -> None:
     """Create a release branch from <base> + selected paths from <source>."""
     m = _load(manifest)
@@ -120,6 +126,8 @@ def release(
             base_branch=base,
             source_branch=source,
             create_tag=tag,
+            push=push,
+            remote=remote,
         )
     except (ReleaseError, GitError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
@@ -137,6 +145,11 @@ def release(
     typer.echo(f"  {len(changes.deleted)} files deleted")
     if tag:
         typer.secho(f"Created tag: {m.version}", fg=typer.colors.GREEN)
+    if push:
+        typer.secho(f"Pushed {release_branch} to {remote}", fg=typer.colors.GREEN)
+        if tag:
+            typer.secho(f"Pushed tag {m.version} to {remote}", fg=typer.colors.GREEN)
+        typer.echo(f"Switched back to {source}")
 
 
 @app.command()

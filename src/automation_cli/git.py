@@ -252,6 +252,26 @@ class GitRepository:
             args += [name, ref]
         self._run(args)
 
+    def push_ref(self, ref: str, *, remote: str = "origin", set_upstream: bool = False) -> None:
+        """Push ``ref`` to ``remote``.
+
+        With ``set_upstream=True`` (recommended for branches) configures tracking.
+        """
+        args = ["push"]
+        if set_upstream:
+            args.append("-u")
+        args += [remote, ref]
+        self._run(args)
+
+    def push_tag(self, name: str, *, remote: str = "origin") -> None:
+        """Push a single tag to ``remote``."""
+        self._run(["push", remote, name])
+
+    def has_remote(self, name: str = "origin") -> bool:
+        """True when ``name`` is a configured remote."""
+        result = self._run(["remote", "get-url", name], check=False)
+        return result.returncode == 0 and result.stdout.strip() != ""
+
     # ---- convenience -------------------------------------------------------
 
     def repo_root(self) -> Path:

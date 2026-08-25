@@ -89,3 +89,16 @@ def repo_path(tmp_path: Path) -> Path:
 def repo(repo_path: Path) -> Iterator[GitRepository]:
     """A temp git repo with main/dev/stage branches and independent changes."""
     yield GitRepository(repo_path)
+
+
+@pytest.fixture
+def repo_with_remote(repo_path: Path) -> Iterator[tuple[GitRepository, Path]]:
+    """A repo with a bare ``origin`` remote already wired up and pushed.
+
+    Yields ``(repo, bare_path)`` so tests can inspect the remote's refs.
+    """
+    bare = repo_path.parent / f"{repo_path.name}-remote.git"
+    _run(["git", "init", "--bare", "-b", "main", str(bare)], repo_path)
+    _run(["git", "remote", "add", "origin", str(bare)], repo_path)
+    _run(["git", "push", "-u", "origin", "main", "dev", "stage"], repo_path)
+    yield GitRepository(repo_path), bare

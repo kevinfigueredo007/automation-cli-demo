@@ -48,6 +48,8 @@ def validate_release(
     base_branch: str = "main",
     source_branch: str = "dev",
     create_tag: bool = False,
+    push: bool = False,
+    remote: str = "origin",
 ) -> ValidationReport:
     """Run all pre-flight checks and return a :class:`ValidationReport`.
 
@@ -59,7 +61,8 @@ def validate_release(
     * every manifest path is either present in the source branch OR is a
       supported "total removal" (present in the base branch but absent in
       source);
-    * when ``create_tag`` is set, the tag must not already exist.
+    * when ``create_tag`` is set, the tag must not already exist;
+    * when ``push`` is set, ``remote`` must be configured.
     """
     version = manifest.version
     release_branch = f"release/{version}"
@@ -119,6 +122,12 @@ def validate_release(
 
     if create_tag and repo.tag_exists(version):
         report.add_error(f"tag already exists: {version!r}")
+        report.ok = False
+
+    if push and not repo.has_remote(remote):
+        report.add_error(
+            f"remote {remote!r} is not configured; cannot push (set it up with: git remote add {remote} <url>)"
+        )
         report.ok = False
 
     if report.errors:

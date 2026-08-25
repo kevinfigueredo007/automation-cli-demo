@@ -89,3 +89,56 @@ def test_release_command_not_a_git_repo(runner: CliRunner, tmp_path: Path, monke
     manifest.write_text("version: '1.0.0'\npaths:\n  - x/\n")
     result = runner.invoke(app, ["release", str(manifest), "--dry-run"])
     assert result.exit_code == 2
+
+
+def test_release_command_push(runner: CliRunner, repo_with_remote, monkeypatch: pytest.MonkeyPatch):
+    repo, bare = repo_with_remote
+    monkeypatch.chdir(repo.root)
+    manifest = repo.root.parent / "release.yaml"
+    manifest.write_text("version: '20.0.0'\npaths:\n  - roles/aws_restart/\n")
+    result = runner.invoke(app, ["release", str(manifest), "--push"])
+    assert result.exit_code == 0, result.output
+    assert "Pushed release/20.0.0 to origin" in result.output
+    assert "Switched back to dev" in result.output
+    # Remote should have the release branch.
+    import subprocess
+    out = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "refs/heads/release/20.0.0"],
+        cwd=str(bare), capture_output=True, text=True, check=True,
+    )
+    assert out.returncode == 0
+
+
+def test_release_command_push_and_tag(runner: CliRunner, repo_with_remote, monkeypatch: pytest.MonkeyPatch):
+    repo, _bare = repo_with_remote
+    monkeypatch.chdir(repo.root)
+    manifest = repo.root.parent / "release.yaml"
+    manifest.write_text("version: '21.0.0'\npaths:\n  - roles/aws_restart/\n")
+    result = runner.invoke(app, ["release", str(manifest), "--push", "--tag"])
+    assert result.exit_code == 0, result.output
+    assert "Pushed tag 21.0.0 to origin" in result.output
+
+
+def test_release_command_push_without_origin_fails(runner: CliRunner, repo_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(repo_path)
+    manifest = repo_path.parent / "release.yaml"
+    manifest.write_text("version: '23.0.0'\npaths:\n  - roles/aws_restart/\n")
+    result = runner.invoke(app, ["release", str(manifest), "--push"])
+    assert result.exit_code == 1
+    assert "remote" in result.output.lower()
+
+
+def test_release_command_dry_run_with_push_does_not_push(runner: CliRunner, repo_with_remote, monkeypatch: pytest.MonkeyPatch):
+    repo, bare = repo_with_remote
+    monkeypatch.chdir(repo.root)
+    manifest = repo.root.parent / "release.yaml"
+    manifest.write_text("version: '22.0.0'\npaths:\n  - roles/aws_restart/\n")
+    result = runner.invoke(app, ["release", str(manifest), "--dry-run", "--push"])
+    assert result.exit_code == 0, result.output
+    # Dry run must not have created/pushed the branch.
+    import subprocess
+    out = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "refs/heads/release/22.0.0"],
+        cwd=str(bare), capture_output=True, text=True, check=False,
+    )
+    assert out.returncode != 0
