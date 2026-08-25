@@ -1,6 +1,4 @@
-version: "1.0.3"
+version: "1.0.4"
 
 paths:
-  - playbooks/aws/restart-instance/
-  - roles/aws_restart/
-  - roles/aws_common/
+  - playbooks/linux/
