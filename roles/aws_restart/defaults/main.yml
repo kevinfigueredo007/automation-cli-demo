@@ -2,3 +2,4 @@
 # defaults para aws_restart
 aws_restart_timeout: 300
 aws_restart_wait: true
+aws_restart_wait_timeout: 600
