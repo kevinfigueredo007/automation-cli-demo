@@ -117,7 +117,14 @@ def release(
 
     if dry_run:
         try:
-            result = run_dry_run(repo, m, base_branch=base, source_branch=source)
+            result = run_dry_run(
+                repo,
+                m,
+                base_branch=base,
+                source_branch=source,
+                remote=remote,
+                no_fetch=no_fetch,
+            )
         except (ReleaseError, GitError) as exc:
             typer.secho(str(exc), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1)

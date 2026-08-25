@@ -148,6 +148,47 @@ def test_dry_run_reports_remaining_top_level(repo: GitRepository):
     assert not any(p.startswith("roles/aws_restart") for p in result.remaining_top_level)
 
 
+def test_dry_run_syncs_before_computing(repo_with_remote):
+    """Dry-run should pull --ff-only so its diff reflects the remote state."""
+    repo, bare = repo_with_remote
+    # Add a commit to origin/main via a second clone.
+    clone2 = bare.parent / f"clone-{id(bare)}"
+    subprocess.run(["git", "clone", "-q", str(bare), str(clone2)], check=True)
+    subprocess.run(["git", "checkout", "main"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=str(clone2), check=True)
+    (clone2 / "new-on-origin.txt").write_text("from origin\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "commit", "-m", "new on origin main"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "push", "origin", "main"], cwd=str(clone2), check=True)
+
+    # Local main is behind. Dry-run should sync it.
+    result = dry_run(repo, _m(["roles/aws_restart/"], version="99.0.0"))
+    assert result.report.ok
+    # The new file should now exist locally (dry-run pulled it).
+    assert (repo.root / "new-on-origin.txt").exists()
+
+
+def test_dry_run_no_fetch_skips_sync(repo_with_remote):
+    """With no_fetch=True, dry-run does not pull."""
+    repo, bare = repo_with_remote
+    # Add a commit to origin/main.
+    clone2 = bare.parent / f"clone-nf-{id(bare)}"
+    subprocess.run(["git", "clone", "-q", str(bare), str(clone2)], check=True)
+    subprocess.run(["git", "checkout", "main"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=str(clone2), check=True)
+    (clone2 / "not-pulled.txt").write_text("should not appear locally\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "commit", "-m", "not pulled"], cwd=str(clone2), check=True)
+    subprocess.run(["git", "push", "origin", "main"], cwd=str(clone2), check=True)
+
+    # Dry-run with --no-fetch should NOT pull.
+    result = dry_run(repo, _m(["roles/aws_restart/"], version="99.0.0"), no_fetch=True)
+    assert result.report.ok
+    assert not (repo.root / "not-pulled.txt").exists()
+
+
 # --- file (not directory) path --------------------------------------------
 
 def test_release_single_file_path(repo: GitRepository, repo_path: Path):
@@ -214,7 +255,7 @@ def test_sync_pulls_behind_branch(repo_with_remote):
     """When local main is behind origin/main, sync fast-forwards it."""
     repo, bare = repo_with_remote
     # Add a commit to origin/main via a second clone.
-    clone2 = bare.parent / "clone2"
+    clone2 = bare.parent / f"clone-{id(bare)}"
     subprocess.run(["git", "clone", "-q", str(bare), str(clone2)], check=True)
     subprocess.run(["git", "checkout", "main"], cwd=str(clone2), check=True)
     subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(clone2), check=True)

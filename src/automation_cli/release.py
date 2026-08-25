@@ -121,8 +121,23 @@ def dry_run(
     *,
     base_branch: str = "main",
     source_branch: str = "dev",
+    remote: str = "origin",
+    no_fetch: bool = False,
 ) -> DryRunResult:
-    """Compute what would happen without touching the repository."""
+    """Compute what would happen without touching the repository (aside from
+    an optional ff-only pull so the result reflects the remote state).
+
+    When ``no_fetch`` is False and ``remote`` is configured, syncs base/source
+    branches with ``pull --ff-only`` before computing the diff — same as
+    :func:`create_release` — so the dry-run shows exactly what a real release
+    would produce.
+    """
+    if not no_fetch and repo.has_remote(remote):
+        try:
+            sync_branches(repo, [base_branch, source_branch], remote=remote)
+        except GitError:
+            pass
+
     report = validate_release(
         repo, manifest, base_branch=base_branch, source_branch=source_branch, create_tag=False
     )
