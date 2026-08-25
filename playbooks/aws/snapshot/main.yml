@@ -1,0 +1,16 @@
+---
+- name: Criar snapshot de volume EBS
+  hosts: localhost
+  gather_facts: false
+  vars:
+    volume_id: "{{ volume_id | default('') }}"
+  tasks:
+    - name: Criar snapshot
+      amazon.aws.ec2_snapshot:
+        volume_id: "{{ volume_id }}"
+        description: "Snapshot automático"
+      register: snapshot_result
+
+    - name: Exibir resultado
+      ansible.builtin.debug:
+        var: snapshot_result

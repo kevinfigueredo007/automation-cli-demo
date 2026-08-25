@@ -1,0 +1,4 @@
+---
+- name: Garantir variáveis AWS comuns
+  ansible.builtin.debug:
+    msg: "region={{ aws_region }} profile={{ aws_profile }}"

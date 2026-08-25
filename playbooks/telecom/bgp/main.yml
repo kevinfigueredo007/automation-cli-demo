@@ -1,0 +1,11 @@
+---
+- name: Configurar sessão BGP com vizinho
+  hosts: routers
+  gather_facts: false
+  vars:
+    neighbor_ip: "{{ neighbor_ip | default('10.0.0.1') }}"
+    local_asn: "{{ local_asn | default('65000') }}"
+  tasks:
+    - name: Configurar sessão BGP
+      ansible.builtin.debug:
+        msg: "Configurando BGP com vizinho {{ neighbor_ip }} (ASN {{ local_asn }})"

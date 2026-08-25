@@ -1,0 +1,12 @@
+---
+- name: Atualizar resolvers DNS em roteadores
+  hosts: routers
+  gather_facts: false
+  vars:
+    dns_servers:
+      - "8.8.8.8"
+      - "1.1.1.1"
+  tasks:
+    - name: Configurar resolvers
+      ansible.builtin.debug:
+        msg: "DNS servers: {{ dns_servers | join(', ') }}"

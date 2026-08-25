@@ -1,0 +1,17 @@
+---
+- name: Reiniciar instância EC2 da AWS
+  hosts: localhost
+  gather_facts: false
+  vars:
+    instance_id: "{{ instance_id | default('') }}"
+  tasks:
+    - name: Reiniciar a instância
+      amazon.aws.ec2_instance:
+        instance_ids:
+          - "{{ instance_id }}"
+        state: restarted
+      register: restart_result
+
+    - name: Exibir resultado
+      ansible.builtin.debug:
+        var: restart_result

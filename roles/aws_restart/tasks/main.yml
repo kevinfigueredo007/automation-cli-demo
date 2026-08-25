@@ -1,0 +1,11 @@
+---
+- name: Aguardar instância reiniciar
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 22
+    timeout: "{{ aws_restart_timeout }}"
+  when: aws_restart_wait | bool
+
+- name: Exibir status pós-restart
+  ansible.builtin.debug:
+    msg: "Instância {{ inventory_hostname }} reiniciada com sucesso"
