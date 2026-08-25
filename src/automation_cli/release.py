@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .git import GitRepository
+from .git import GitError, GitRepository
 from .models import ReleaseManifest
 from .validator import ValidationReport, validate_release
 
@@ -121,8 +121,23 @@ def dry_run(
     *,
     base_branch: str = "main",
     source_branch: str = "dev",
+    remote: str = "origin",
+    no_fetch: bool = False,
 ) -> DryRunResult:
-    """Compute what would happen without touching the repository."""
+    """Compute what would happen without touching the repository (aside from
+    an optional ff-only pull so the result reflects the remote state).
+
+    When ``no_fetch`` is False and ``remote`` is configured, syncs base/source
+    branches with ``pull --ff-only`` before computing the diff — same as
+    :func:`create_release` — so the dry-run shows exactly what a real release
+    would produce.
+    """
+    if not no_fetch and repo.has_remote(remote):
+        try:
+            sync_branches(repo, [base_branch, source_branch], remote=remote)
+        except GitError:
+            pass
+
     report = validate_release(
         repo, manifest, base_branch=base_branch, source_branch=source_branch, create_tag=False
     )
@@ -144,6 +159,66 @@ def dry_run(
     )
 
 
+@dataclass
+class SyncResult:
+    """Result of syncing base/source branches with the remote."""
+
+    synced: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+
+
+def sync_branches(
+    repo: GitRepository,
+    branches: list[str],
+    *,
+    remote: str = "origin",
+) -> SyncResult:
+    """Fetch + fast-forward-only pull of ``branches`` from ``remote``.
+
+    For each branch:
+    * fetch the branch ref from ``remote``;
+    * if the local branch is behind the remote -> ``pull --ff-only`` (advances);
+    * if the local branch is ahead or diverged -> skip (leave untouched);
+    * if there is no remote tracking ref -> skip.
+
+    Returns a :class:`SyncResult` with the lists of synced and skipped branches.
+    Never creates a merge commit — only fast-forwards.
+    """
+    result = SyncResult()
+    remote_ref = lambda b: f"{remote}/{b}"
+
+    # Remember where we started so we can restore after pulling.
+    original_branch = repo.current_branch()
+
+    for branch in branches:
+        # Fetch just this branch from the remote.
+        repo.fetch_branches(remote, [branch])
+
+        # Compare local vs remote.
+        ahead, behind = repo.local_ahead_or_behind(branch, remote_ref(branch))
+        if ahead > 0:
+            # Local has commits the remote doesn't — don't touch.
+            result.skipped.append(
+                f"{branch} (local is {ahead} commit(s) ahead of {remote}/{branch})"
+            )
+            continue
+        if behind == 0:
+            # Already up to date.
+            result.skipped.append(f"{branch} (already up to date)")
+            continue
+        # Local is purely behind — safe to fast-forward.
+        # Need to be on the branch to pull.
+        repo.checkout(branch)
+        repo.pull_ff_only(branch, remote=remote)
+        result.synced.append(f"{branch} (+{behind} commit(s))")
+
+    # Restore the original branch after syncing.
+    if repo.current_branch() != original_branch:
+        repo.checkout(original_branch)
+
+    return result
+
+
 def create_release(
     repo: GitRepository,
     manifest: ReleaseManifest,
@@ -154,21 +229,33 @@ def create_release(
     commit_message: str | None = None,
     push: bool = False,
     remote: str = "origin",
-) -> tuple[str, ChangeSet, list[str], list[str]]:
+    no_fetch: bool = False,
+) -> tuple[str, ChangeSet, list[str], list[str], SyncResult | None]:
     """Apply the release: create ``release/<version>`` from base + selected paths.
 
-    Returns ``(release_branch, changes, kept_paths, removed_redundant)``.
+    Returns ``(release_branch, changes, kept_paths, removed_redundant, sync_result)``.
 
     Steps:
-    1. Pre-flight validation (incl. remote presence when ``push``).
-    2. Normalize overlapping paths.
-    3. Create the release branch from the base branch and check it out.
-    4. For each selected path, restore its state from the source branch and
+    1. Sync base/source branches with ``remote`` (unless ``no_fetch``).
+    2. Pre-flight validation (incl. remote presence when ``push``).
+    3. Normalize overlapping paths.
+    4. Create the release branch from the base branch and check it out.
+    5. For each selected path, restore its state from the source branch and
        remove any files that were deleted there.
-    5. Stage and commit. Optionally create a tag.
-    6. When ``push``: push the release branch (and the tag when ``create_tag``)
+    6. Stage and commit. Optionally create a tag.
+    7. When ``push``: push the release branch (and the tag when ``create_tag``)
        to ``remote`` with ``-u``, then ``checkout`` the source branch.
     """
+    sync_result: SyncResult | None = None
+    if not no_fetch and repo.has_remote(remote):
+        try:
+            sync_result = sync_branches(repo, [base_branch, source_branch], remote=remote)
+        except GitError:
+            # Network/remote issues — don't block the release, just skip sync.
+            sync_result = SyncResult(
+                skipped=[f"sync skipped (could not fetch from {remote})"]
+            )
+
     report = validate_release(
         repo,
         manifest,
@@ -235,7 +322,7 @@ def create_release(
         # Only switch back to the source branch after a successful push.
         repo.checkout(source_branch)
 
-    return release_branch, changes, kept, removed_redundant
+    return release_branch, changes, kept, removed_redundant, sync_result
 
 
 def _format_report(report: ValidationReport) -> str:
@@ -251,6 +338,8 @@ __all__ = [
     "ChangeSet",
     "DryRunResult",
     "ReleaseError",
+    "SyncResult",
     "create_release",
     "dry_run",
+    "sync_branches",
 ]

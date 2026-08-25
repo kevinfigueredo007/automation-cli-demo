@@ -200,6 +200,38 @@ class GitRepository:
     def fetch(self, remote: str = "origin") -> None:
         self._run(["fetch", "--", remote])
 
+    def fetch_branches(self, remote: str, branches: list[str]) -> None:
+        """Fetch specific branches from ``remote`` without merging."""
+        if not branches:
+            return
+        self._run(["fetch", "--", remote, *branches])
+
+    def pull_ff_only(self, branch: str, *, remote: str = "origin") -> None:
+        """Fast-forward-only pull of ``branch`` from ``remote``.
+
+        Equivalent to ``git pull --ff-only <remote> <branch>``. Fails with
+        :class:`GitError` if the branch has diverged (local has commits the
+        remote does not), so no merge commit is ever created silently.
+        """
+        self._run(["pull", "--ff-only", remote, branch])
+
+    def local_ahead_or_behind(self, branch: str, remote_ref: str) -> tuple[int, int]:
+        """Return ``(ahead, behind)`` commit counts of local ``branch`` vs
+        ``remote_ref`` (e.g. ``origin/main``).
+
+        ``ahead``  = commits local has that remote doesn't.
+        ``behind`` = commits remote has that local doesn't.
+        """
+        result = self._run(
+            ["rev-list", "--left-right", "--count", f"{branch}...{remote_ref}"], check=False
+        )
+        if result.returncode != 0:
+            return (0, 0)
+        parts = result.stdout.strip().split()
+        if len(parts) != 2:
+            return (0, 0)
+        return int(parts[0]), int(parts[1])
+
     def create_branch(self, name: str, from_ref: str) -> None:
         self._run(["branch", name, from_ref])
 
