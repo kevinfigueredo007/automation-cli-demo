@@ -18,6 +18,7 @@
       ansible.builtin.debug:
         var: restart_result
 
+
     - name: Registrar hora do restart
       ansible.builtin.set_fact:
         restart_time: "{{ ansible_date_time.iso8601 }}"
